@@ -14,15 +14,6 @@ https://exchange-rate-reporter.streamlit.app/
 
 本工具不是交易软件，也不提供换汇建议。
 
-它不会告诉用户：
-
-```text
-现在应该换汇
-应该换多少
-应该买入澳币
-应该卖出澳币
-```
-
 它只报告：
 
 ```text
