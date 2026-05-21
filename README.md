@@ -1,322 +1,314 @@
-# 汇率状态提醒 App
+# Exchange Rate Reporter
 
-这是一个面向留学生家庭的轻量型汇率状态提醒 App 原型。
+A lightweight exchange-rate status reporter designed for international students and their families.
 
-它不提供换汇建议，只显示：
+The app focuses on **clear exchange-rate status reporting**, not financial advice. It reports the current AUD/CNY reference rate, an estimated bank exchange rate, historical position, and cost impact for a user-defined target amount.
 
-1. 当前汇率；
-2. 当前汇率在历史窗口中的位置；
-3. 达到用户关注阈值、低位/高位区间或成本变化时的触发原因；
-4. 按目标金额折算的成本变化；
-5. App 内提醒记录。
-
-本版本已经移除邮件提醒。提醒只显示在 App 内。
-
----
-
-## 1. 重要定位
-
-这不是实时交易工具，也不是换汇建议工具。
-
-它的定位是：
-
-> 在用户设定的时间窗口内，定时生成 App 内汇率状态报告，帮助用户判断当前是否值得重新查看换汇计划。
-
-报告不会出现：
-
-- 建议换多少；
-- 建议现在换；
-- 建议分批换；
-- 买入/卖出信号。
-
----
-
-## 2. 数据来源
-
-默认使用 Frankfurter API 的日频公开参考汇率。
-
-百度财经页面仍然保留为人工核对入口，例如：
+Live app:
 
 ```text
-https://finance.baidu.com/foreign/global-AUDCNY
-```
-
-不建议把百度网页作为程序唯一数据源，因为网页结构变化可能导致程序失效。
-
----
-
-
-
-## 当前汇率与历史数据的口径修正
-
-v2 版本开始，App 不再直接用历史序列最后一行作为“当前汇率”。
-
-原因是：历史时间序列 endpoint 有时会比单一货币对 current endpoint 慢一步更新。
-
-现在的逻辑是：
-
-```text
-当前汇率：
-使用 Frankfurter v2 direct pair endpoint
-例如：https://api.frankfurter.dev/v2/rate/AUD/CNY
-
-历史区间：
-使用 Frankfurter 历史时间序列 endpoint
-用于计算过去 30/90 天分位数、低位线和高位线
-```
-
-程序会先读取历史序列，然后用 direct pair endpoint 返回的最新汇率覆盖/追加到历史序列中。
-
-这样可以保证：
-
-```text
-App 顶部显示的当前汇率
-当前状态报告中的当前汇率
-App 内提醒中的当前汇率
-```
-
-都尽量对应“当前可查询到的最新 direct pair rate”，而不是历史 endpoint 的滞后值。
-
----
-
-## 3. 历史数据定义
-
-第一版采用：
-
-> API 返回的每日公开参考汇率/最近工作日汇率，作为每个历史观察日的代表值。
-
-不使用盘中平均值。原因是家庭换汇规划不需要秒级数据，日频数据更稳定，也更容易解释。
-
----
-
-## 4. App 内提醒逻辑
-
-用户可以设置：
-
-- 提醒开始时间；
-- 提醒结束时间；
-- 提醒间隔，例如每 2 小时；
-- 是否周末不提醒；
-- 显著变化阈值，例如较上次提醒变化 0.15%。
-
-运行逻辑：
-
-1. 页面每 60 秒自动刷新一次；
-2. 如果当前时间不在提醒窗口内，不生成新提醒；
-3. 如果是周末，并且开启“周末不提醒”，不生成新提醒；
-4. 如果距离上次提醒不足设定间隔，不生成新提醒；
-5. 到达提醒间隔后：
-   - 如果触发阈值、低位区间、高位区间或成本变化，生成完整报告；
-   - 如果没有值得更新的变化，生成简洁状态更新。
-
-简洁状态更新示例：
-
-```text
-【AUD/CNY 简洁状态更新】
-
-当前汇率：
-1 AUD ≈ 4.8000 CNY
-
-金额影响：
-若兑换 10,000 AUD，按当前汇率约需 48,000 CNY。
-
-状态：
-与上次 App 内提醒基本一致。
-
-说明：
-本报告只展示汇率状态和金额折算，不构成换汇建议。
+https://exchange-rate-reporter.streamlit.app/
 ```
 
 ---
 
-## 5. 本地运行方式
+## 1. Product positioning
 
-开发者或你自己测试时可以本地运行。
+This app is not a trading tool and does not provide exchange recommendations.
 
-```bash
-cd exchange_rate_reporter_app
-python -m venv .venv
+It does **not** say:
+
+```text
+Exchange now
+Exchange 20%
+Buy AUD
+Sell AUD
 ```
 
-Windows:
+Instead, it reports:
 
-```bash
-.venv\Scripts\activate
+```text
+Current exchange-rate reference
+Estimated bank exchange-rate reference
+Historical position
+Cost impact for the selected amount
+Whether the value has entered a user-defined attention range
 ```
 
-macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-安装依赖：
-
-```bash
-pip install -r requirements.txt
-```
-
-启动：
-
-```bash
-streamlit run app.py
-```
+The final decision is left to the user.
 
 ---
 
-## 6. 给父母使用的推荐方式
+## 2. Current data-source design
 
-父母不应该接触 Python、本地环境、命令行或配置文件。
+The app uses separate data sources for **current report rate** and **historical report**.
 
-更适合的流程是：
+### 2.1 Current / report rate
 
-1. 你把这个项目上传到 GitHub；
-2. 用 Streamlit Community Cloud、Render、Railway 或自己的服务器部署；
-3. 生成一个网页链接；
-4. 父母只需要打开这个网页；
-5. 你帮他们设置好阈值、提醒窗口和观察金额；
-6. 之后他们只需要看 App 内的提醒卡片。
-
-注意：
-
-- 当前版本是 App 内提醒，不是手机系统推送；
-- 如果网页没有打开，父母不会看到 App 内提醒；
-- 如果需要手机系统通知，需要额外实现 PWA Push Notification、微信服务号/企业微信/Telegram Bot 或短信服务。
-
----
-
-## 7. 配置文件
-
-`config.example.json` 是默认配置模板。
-
-如果部署平台允许持久化文件，可以复制为：
-
-```bash
-cp config.example.json config.json
-```
-
-Windows:
-
-```bash
-copy config.example.json config.json
-```
-
-不过在云部署里，更好的方式是让用户直接在 App 侧边栏设置。
-
----
-
-## 8. 文件结构
-
-```text
-exchange_rate_reporter_app/
-├── app.py                    # Streamlit App 主界面
-├── rate_service.py           # 汇率数据获取
-├── report_logic.py           # 状态报告生成
-├── notification_logic.py     # App 内提醒调度逻辑
-├── config.example.json       # 默认设置
-├── requirements.txt          # 依赖包
-└── README.md                 # 使用说明
-```
-
----
-
-## 9. 后续可扩展方向
-
-如果要做成真正的手机 App 或小程序，建议后续改成：
-
-- 前端：React Native / Flutter / 微信小程序；
-- 后端：FastAPI；
-- 数据库：SQLite / Supabase / PostgreSQL；
-- 定时任务：APScheduler / Celery / Cloud Scheduler；
-- 通知：PWA Push、微信服务号模板消息、企业微信机器人、Telegram Bot 或短信。
-
-当前版本适合验证产品逻辑和交互设计。
-
-
-## 中行换汇估算提示
-
-v3 版本在 App 顶部增加了一个高亮提示：
-
-```text
-中行换汇汇率约为 current_rate + 0.0236
-```
-
-例如当前 Frankfurter 汇率为 4.8396，则页面会显示：
-
-```text
-中行换汇汇率约为 4.8632
-```
-
-这个值只是基于用户观察到的固定差值进行估算，不是中国银行官方实时牌价。真正办理换汇时，应以银行实际成交汇率为准。
-
-
-## v5 当前汇率数据源：Google Finance 优先
-
-v5 版本开始，App 的 report 当前汇率优先读取 Google Finance AUD/CNY 页面：
-
-```text
-https://www.google.com/finance/quote/AUD-CNY
-```
-
-数据源逻辑：
-
-```text
-Report 当前汇率：
-优先使用 Google Finance 页面报价
-
-如果 Google Finance 解析失败：
-自动回退到 Frankfurter v2 direct pair endpoint
-
-历史区间：
-继续使用 Frankfurter 日频历史数据
-```
-
-注意：Google Finance 不是官方 JSON API，本项目采用网页解析方式读取页面中的 AUD/CNY 报价。如果 Google 修改页面结构，解析可能失效，因此保留 Frankfurter fallback。
-
-## v5 提醒间隔限制
-
-App 内提醒间隔被硬性限制为最低 2 小时：
-
-```text
-notify_interval_hours >= 2
-```
-
-即使旧配置中保存过 0.5 或 1 小时，程序也会自动按 2 小时处理。
-
-
-## v6 protection and data-source policy
-
-v6 keeps the current/report rate as:
+Current report rate uses:
 
 ```text
 Google Finance first
 Frankfurter fallback if Google Finance fails
 ```
 
-The highlighted estimated BOC exchange rate is now calculated as:
+For AUD/CNY, the Google Finance reference page is:
 
 ```text
-estimated BOC rate = current report rate + 0.0201
+https://www.google.com/finance/quote/AUD-CNY
 ```
 
-The page clearly labels whether the current report rate came from `Google Finance` or from `Frankfurter fallback`.
+Google Finance is used because it provides a relatively up-to-date AUD/CNY reference and is closer to common finance-page values such as Baidu Finance.
 
-### Anti-abuse / scraping protection
+However, Google Finance is not an official JSON API. The app parses the public page, so the parser may break if Google changes its page structure. For this reason, the app keeps Frankfurter as a fallback.
 
-The App no longer refreshes every 60 seconds.
-
-Protection rules:
+If Google Finance is successfully parsed, the page displays:
 
 ```text
-1. Report update is disabled by default.
-2. If report update is disabled, the App does not auto-refresh or generate new App reports.
-3. Report update interval is hard-limited to at least 2 hours.
-4. Old configs below 2 hours are automatically clamped to 2 hours.
-5. Data loading uses Streamlit cache with a minimum TTL of 2 hours.
+Report 当前汇率来源：Google Finance
 ```
 
-This means page reruns or manual refreshes should not repeatedly scrape Google Finance.
+If Google Finance fails, the page displays:
 
-### Historical report
+```text
+Report 当前汇率来源：Frankfurter
+```
 
-Historical report and percentile calculation continue to use Frankfurter daily historical data only.
+### 2.2 Historical report
+
+Historical report and historical percentile calculation use:
+
+```text
+Frankfurter daily historical data
+```
+
+This is used for:
+
+```text
+30/90-day historical window
+Low/high percentile lines
+Historical position
+Historical trend chart
+```
+
+Frankfurter is daily-frequency data, so it is stable for historical reporting but not used as the preferred current report rate.
+
+---
+
+## 3. Highlighted estimated bank exchange rate
+
+The yellow highlighted section shows:
+
+```text
+Estimated BOC exchange rate = current report rate + 0.0201
+```
+
+Example:
+
+```text
+Google Finance current rate: 4.8481
+Estimated BOC exchange rate: 4.8481 + 0.0201 = 4.8682
+```
+
+The page clearly states whether the calculation is based on:
+
+```text
+Google Finance
+```
+
+or
+
+```text
+Frankfurter fallback
+```
+
+This value is only an estimate. The actual exchange rate should always be checked in the bank app, online banking, or counter system before making a transaction.
+
+---
+
+## 4. Anti-abuse and refresh protection
+
+To avoid excessive data fetching, the app includes several protection mechanisms.
+
+### 4.1 Report update is disabled by default
+
+When the app is opened, `report update` is off by default.
+
+If report update is off:
+
+```text
+The page does not auto-refresh
+The app does not automatically generate new in-app reports
+The app only displays the current cached state
+```
+
+### 4.2 Minimum update interval is 2 hours
+
+The report update interval has a hard minimum:
+
+```text
+notify_interval_hours >= 2
+```
+
+The UI does not allow values below 2 hours.
+
+The backend also enforces this rule:
+
+```python
+interval_hours = max(2.0, float(cfg.get("notify_interval_hours", 2)))
+```
+
+If an old configuration contains a value below 2 hours, the app automatically treats it as 2 hours and displays a red warning.
+
+### 4.3 Streamlit cache protection
+
+External data fetching is cached with a minimum TTL of 2 hours.
+
+This means:
+
+```text
+Repeated page refreshes do not repeatedly scrape Google Finance
+Manual browser refresh does not trigger high-frequency fetching
+Report update cannot run more frequently than the configured interval
+```
+
+The default behavior is conservative to reduce unnecessary requests.
+
+---
+
+## 5. App features
+
+The current version supports:
+
+```text
+AUD/CNY current report rate
+Google Finance current-rate source with Frankfurter fallback
+Estimated BOC exchange rate highlight
+Target exchange amount
+Cost impact calculation
+User-defined attention threshold
+Historical 30/90/180/365-day window
+Low/high historical percentile lines
+In-app report cards
+Weekend pause option
+Custom report update time window
+Minimum 2-hour report update interval
+```
+
+---
+
+## 6. How to run locally
+
+### 6.1 Enter the project folder
+
+```bat
+cd /d C:\0_Levia\0_Code\MiniProject\exchange_rate_reporter_app
+```
+
+### 6.2 Activate the conda environment
+
+```bat
+conda activate exchange
+```
+
+### 6.3 Run the app
+
+```bat
+streamlit run app.py
+```
+
+The local app usually opens at:
+
+```text
+http://localhost:8501
+```
+
+---
+
+## 7. Files included
+
+```text
+app.py
+rate_service.py
+report_logic.py
+notification_logic.py
+config.example.json
+requirements.txt
+README.md
+```
+
+Do not upload these files/folders to GitHub:
+
+```text
+__pycache__/
+notification_state.json
+config.json
+.venv/
+```
+
+`notification_state.json` is local runtime state and should not be included in the public repository.
+
+---
+
+## 8. Deploying to Streamlit Community Cloud
+
+The app is deployed from GitHub to Streamlit Community Cloud.
+
+To update the online app, upload or commit the following files to the GitHub repository:
+
+```text
+app.py
+rate_service.py
+report_logic.py
+notification_logic.py
+config.example.json
+README.md
+```
+
+If `requirements.txt` has not changed, it does not need to be re-uploaded.
+
+After GitHub is updated, Streamlit Cloud will automatically redeploy the app.
+
+---
+
+## 9. Current limitations
+
+### 9.1 Google Finance is not an official API
+
+Google Finance is used as a relatively up-to-date reference source, but it is not an official JSON API. If the page structure changes, the parser may fail.
+
+The app handles this by falling back to Frankfurter.
+
+### 9.2 The app does not provide financial advice
+
+The app only reports exchange-rate status and cost impact.
+
+It does not provide instructions on whether, when, or how much to exchange.
+
+### 9.3 In-app reports are not phone push notifications
+
+Current reports appear inside the web app.
+
+They are not:
+
+```text
+SMS notifications
+WeChat notifications
+Mobile push notifications
+Email alerts
+```
+
+The user needs to open the web page to view the report.
+
+---
+
+## 10. Suggested user-facing explanation
+
+A short explanation for family users:
+
+```text
+这个网页只用于查看澳币兑人民币的汇率状态。
+它会显示当前参考汇率、预计中行换汇汇率、目标金额大约需要多少人民币，以及当前汇率在近期历史中的位置。
+本工具不提供换汇建议，是否换汇需要用户自行决定。
+```
+
