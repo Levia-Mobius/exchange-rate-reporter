@@ -1,0 +1,17 @@
+{
+  "base_currency": "AUD",
+  "quote_currency": "CNY",
+  "watch_threshold": 4.75,
+  "target_amount": 10000,
+  "history_days": 90,
+  "low_percentile": 25,
+  "high_percentile": 75,
+  "cost_change_alert_cny": 500,
+  "timezone": "Asia/Shanghai",
+  "notify_start_time": "08:00",
+  "notify_end_time": "22:00",
+  "notify_interval_hours": 2,
+  "notify_weekdays_only": true,
+  "minor_update_rate_change_pct": 0.15,
+  "baidu_reference_url": "https://finance.baidu.com/foreign/global-AUDCNY"
+}
