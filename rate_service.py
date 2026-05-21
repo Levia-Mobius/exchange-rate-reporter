@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
+import html
+import re
 import requests
 import pandas as pd
 
@@ -15,21 +17,18 @@ class RateServiceError(RuntimeError):
 class RatePoint:
     date: str
     rate: float
+    source: str = "unknown"
 
 
 class FrankfurterRateService:
     """
-    Uses Frankfurter API.
+    Data-source design:
+    - Current/report rate: Google Finance AUD-CNY quote page, parsed from public HTML.
+    - Fallback current rate: Frankfurter v2 direct pair endpoint.
+    - Historical rates: Frankfurter daily historical endpoint.
 
-    Important design:
-    - get_latest() uses the direct current pair endpoint:
-        https://api.frankfurter.dev/v2/rate/AUD/CNY
-      This is used for the App's "current rate".
-    - get_history() uses the time-series endpoint:
-        https://api.frankfurter.dev/v1/YYYY-MM-DD..YYYY-MM-DD?base=AUD&symbols=CNY
-      This is used for historical percentile calculation.
-    - get_history_with_current() appends or overwrites the latest observation with get_latest(),
-      so the App report always uses the current available pair rate.
+    Google Finance is not an official JSON API, so parsing may break if Google changes
+    the page structure. The Frankfurter fallback keeps the App usable.
     """
 
     def __init__(self, timeout: int = 15):
@@ -37,7 +36,66 @@ class FrankfurterRateService:
         self.v1_base_url = "https://api.frankfurter.dev/v1"
         self.v2_base_url = "https://api.frankfurter.dev/v2"
 
-    def get_latest(
+    def get_google_finance_current(
+        self,
+        base_currency: str = "AUD",
+        quote_currency: str = "CNY",
+    ) -> RatePoint:
+        base_currency = base_currency.upper()
+        quote_currency = quote_currency.upper()
+        url = f"https://www.google.com/finance/quote/{base_currency}-{quote_currency}"
+
+        headers = {
+            "user-agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "accept-language": "en-US,en;q=0.9",
+        }
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=self.timeout)
+            resp.raise_for_status()
+            raw_html = resp.text
+        except Exception as exc:
+            raise RateServiceError(f"Failed to fetch Google Finance quote page: {exc}") from exc
+
+        text = html.unescape(re.sub(r"<[^>]+>", "\n", raw_html))
+        text = re.sub(r"\s+", " ", text)
+
+        # Look for the section around:
+        # AUD / CNY ... Australian Dollar / Chinese Yuan 4.8487 ... May 21, 4:53:00 AM UTC
+        pair_marker = f"{base_currency} / {quote_currency}"
+        currency_name_marker = "Australian Dollar / Chinese Yuan" if (base_currency, quote_currency) == ("AUD", "CNY") else None
+
+        pos = text.find(pair_marker)
+        if pos == -1 and currency_name_marker:
+            pos = text.find(currency_name_marker)
+
+        if pos == -1:
+            raise RateServiceError("Could not locate currency pair marker on Google Finance page.")
+
+        window = text[pos: pos + 1200]
+
+        # The first plausible FX number after the AUD/CNY label is the quote.
+        # Avoid percentages and bracketed changes by requiring a 1-3 digit integer part and decimals.
+        candidates = re.findall(r"(?<![\d+\-])([0-9]{1,3}\.[0-9]{3,6})(?![%\d])", window)
+        if not candidates:
+            raise RateServiceError("Could not extract current rate from Google Finance page.")
+
+        rate = float(candidates[0])
+
+        # Optional timestamp. If not found, use today's date.
+        time_match = re.search(
+            r"([A-Z][a-z]{2}\s+\d{1,2},\s+\d{1,2}:\d{2}:\d{2}\s+(?:AM|PM)\s+UTC)",
+            window,
+        )
+        rate_date = time_match.group(1) if time_match else date.today().isoformat()
+
+        return RatePoint(date=rate_date, rate=rate, source="Google Finance")
+
+    def get_frankfurter_latest(
         self,
         base_currency: str = "AUD",
         quote_currency: str = "CNY",
@@ -51,17 +109,30 @@ class FrankfurterRateService:
             resp.raise_for_status()
             payload = resp.json()
         except Exception as exc:
-            raise RateServiceError(f"Failed to fetch latest rate: {exc}") from exc
+            raise RateServiceError(f"Failed to fetch Frankfurter latest rate: {exc}") from exc
 
-        # Expected:
-        # {"date":"2026-05-21","base":"AUD","quote":"CNY","rate":4.8396}
         rate = payload.get("rate")
         rate_date = payload.get("date")
 
         if rate is None or rate_date is None:
-            raise RateServiceError(f"Latest rate response is missing expected fields: {payload}")
+            raise RateServiceError(f"Frankfurter latest response is missing expected fields: {payload}")
 
-        return RatePoint(date=str(rate_date), rate=float(rate))
+        return RatePoint(date=str(rate_date), rate=float(rate), source="Frankfurter")
+
+    def get_latest(
+        self,
+        base_currency: str = "AUD",
+        quote_currency: str = "CNY",
+    ) -> RatePoint:
+        """
+        Current-rate priority:
+        1. Google Finance page quote.
+        2. Frankfurter v2 direct pair endpoint as fallback.
+        """
+        try:
+            return self.get_google_finance_current(base_currency, quote_currency)
+        except Exception:
+            return self.get_frankfurter_latest(base_currency, quote_currency)
 
     def get_history(
         self,
@@ -104,21 +175,17 @@ class FrankfurterRateService:
         base_currency: str = "AUD",
         quote_currency: str = "CNY",
         days: int = 90,
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, RatePoint]:
         """
-        Historical endpoint can lag behind the direct current endpoint.
-        This method uses history for the lookback window, then appends/overwrites
-        the current pair quote from get_latest().
-
-        This keeps:
-        - historical percentile: based on daily observations;
-        - current report: based on the latest direct pair quote.
+        Historical endpoint is used for lookback statistics.
+        Current endpoint is used for the actual current report.
         """
         df = self.get_history(base_currency, quote_currency, days)
         latest = self.get_latest(base_currency, quote_currency)
-        latest_date = pd.to_datetime(latest.date).date()
 
-        # Remove any existing row for the latest date, then append the current direct quote.
+        latest_date = date.today()
+        # Google returns a timestamp string such as "May 21, 4:53:00 AM UTC".
+        # We append it as today's observation for percentile calculations.
         df = df[df["date"] != latest_date].copy()
         df = pd.concat(
             [
@@ -128,4 +195,4 @@ class FrankfurterRateService:
             ignore_index=True,
         )
         df = df.sort_values("date").reset_index(drop=True)
-        return df
+        return df, latest

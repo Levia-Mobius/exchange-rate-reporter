@@ -189,7 +189,7 @@ def build_brief_report(
             direction = "上升" if pct > 0 else "下降"
             change_text = f"较{compare_time_text}{direction}约 {abs(pct):.2f}%。"
 
-    boc_estimated_rate = current_rate + 0.0236
+    boc_estimated_rate = current_rate + 0.0201
 
     return f"""【{base_currency}/{quote_currency} 简洁状态更新】
 
@@ -259,7 +259,7 @@ def format_report_text(
 数据日期：{rate_date}
 
 中行换汇参考：
-中行换汇汇率约为 {current_rate + 0.0236:.4f}
+中行换汇汇率约为 {current_rate + 0.0201:.4f}
 
 触发原因：
 {trigger_sentence}

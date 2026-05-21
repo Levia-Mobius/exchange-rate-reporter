@@ -248,3 +248,75 @@ v3 版本在 App 顶部增加了一个高亮提示：
 ```
 
 这个值只是基于用户观察到的固定差值进行估算，不是中国银行官方实时牌价。真正办理换汇时，应以银行实际成交汇率为准。
+
+
+## v5 当前汇率数据源：Google Finance 优先
+
+v5 版本开始，App 的 report 当前汇率优先读取 Google Finance AUD/CNY 页面：
+
+```text
+https://www.google.com/finance/quote/AUD-CNY
+```
+
+数据源逻辑：
+
+```text
+Report 当前汇率：
+优先使用 Google Finance 页面报价
+
+如果 Google Finance 解析失败：
+自动回退到 Frankfurter v2 direct pair endpoint
+
+历史区间：
+继续使用 Frankfurter 日频历史数据
+```
+
+注意：Google Finance 不是官方 JSON API，本项目采用网页解析方式读取页面中的 AUD/CNY 报价。如果 Google 修改页面结构，解析可能失效，因此保留 Frankfurter fallback。
+
+## v5 提醒间隔限制
+
+App 内提醒间隔被硬性限制为最低 2 小时：
+
+```text
+notify_interval_hours >= 2
+```
+
+即使旧配置中保存过 0.5 或 1 小时，程序也会自动按 2 小时处理。
+
+
+## v6 protection and data-source policy
+
+v6 keeps the current/report rate as:
+
+```text
+Google Finance first
+Frankfurter fallback if Google Finance fails
+```
+
+The highlighted estimated BOC exchange rate is now calculated as:
+
+```text
+estimated BOC rate = current report rate + 0.0201
+```
+
+The page clearly labels whether the current report rate came from `Google Finance` or from `Frankfurter fallback`.
+
+### Anti-abuse / scraping protection
+
+The App no longer refreshes every 60 seconds.
+
+Protection rules:
+
+```text
+1. Report update is disabled by default.
+2. If report update is disabled, the App does not auto-refresh or generate new App reports.
+3. Report update interval is hard-limited to at least 2 hours.
+4. Old configs below 2 hours are automatically clamped to 2 hours.
+5. Data loading uses Streamlit cache with a minimum TTL of 2 hours.
+```
+
+This means page reruns or manual refreshes should not repeatedly scrape Google Finance.
+
+### Historical report
+
+Historical report and percentile calculation continue to use Frankfurter daily historical data only.

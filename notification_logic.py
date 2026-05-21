@@ -102,7 +102,7 @@ def create_notification_if_due(
     if not in_time_window(now_local, start_time, end_time):
         return state, False, f"当前不在提醒窗口内。提醒窗口：{start_time}–{end_time}。"
 
-    interval_hours = float(cfg.get("notify_interval_hours", 2))
+    interval_hours = max(2.0, float(cfg.get("notify_interval_hours", 2)))
     elapsed = hours_since_last_notification(state, now_local)
     if elapsed is not None and elapsed < interval_hours:
         remaining = interval_hours - elapsed

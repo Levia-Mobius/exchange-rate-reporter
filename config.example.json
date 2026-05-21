@@ -13,5 +13,7 @@
   "notify_interval_hours": 2,
   "notify_weekdays_only": true,
   "minor_update_rate_change_pct": 0.15,
-  "baidu_reference_url": "https://finance.baidu.com/foreign/global-AUDCNY"
+  "baidu_reference_url": "https://finance.baidu.com/foreign/global-AUDCNY",
+  "enable_report_update": false,
+  "google_reference_url": "https://www.google.com/finance/quote/AUD-CNY"
 }
